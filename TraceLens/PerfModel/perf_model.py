@@ -829,6 +829,102 @@ class tev2_pseudo_gemm(GEMM):
     def bytes_bwd(self, bytes_per_element):
         raise NotImplementedError("Backward pass for tev2_pseudo_gemm is not defined.")
 
+class turbo_gemm(GEMM):
+    """
+    """
+
+    def __init__(self, event, arch=None, python_path=None):
+        super().__init__(event, arch)
+    
+    def scalar_dtype_enum_to_scalar_dtype(self, scalar_dtype_enum):
+        dict_scalar_dtype_enum2scalar_dtype = {
+            15: "c10::bfloat16",
+        }
+        scalar_dtype = dict_scalar_dtype_enum2scalar_dtype.get(scalar_dtype_enum, None)
+        if scalar_dtype is None:
+            raise ValueError(f"Invalid scalar dtype enum: {scalar_dtype_enum}")
+
+        return scalar_dtype
+
+    def get_param_details(self, event):
+        input_dims = event["args"]["Input Dims"]
+
+        B_shape, A_shape = input_dims[0], input_dims[2]
+
+        concrete_inputs = event["args"]["Concrete Inputs"]
+        trans_a = concrete_inputs[6] == True
+        trans_b = concrete_inputs[5] == True
+        trans_c = concrete_inputs[7] == True
+
+        if trans_c:
+            A_shape, B_shape = B_shape, A_shape
+
+        # A [6144,4096], B [16384,4096]
+        # trans_a: True, trans_b: False
+        if trans_a:
+            M = A_shape[1]
+            K = A_shape[0]
+        else:
+            M = A_shape[0]
+            K = A_shape[1]
+
+        if trans_b:
+            N = B_shape[1]
+        else:
+            N = B_shape[0]
+
+        bias = False
+
+        # dtype A, B, output, bias
+        out_scalar_dtype = int(concrete_inputs[4])
+        dtype_A_B = (
+            event["args"]["Input type"][0],
+            event["args"]["Input type"][2],
+            self.scalar_dtype_enum_to_scalar_dtype(out_scalar_dtype)
+        )
+        try:
+            stride_A = tuple(event["args"]["Input Strides"][2])
+            stride_B = tuple(event["args"]["Input Strides"][0])
+            if trans_c:
+                stride_A, stride_B = stride_B, stride_A
+
+        except KeyError:
+            stride_A = stride_B = None
+
+        return {
+            "M": M,
+            "N": N,
+            "K": K,
+            "bias": bias,
+            "stride_A": stride_A,
+            "stride_B": stride_B,
+            "dtype_A_B": dtype_A_B,
+        }
+
+    def bytes(self):
+        dtype_A_B = self.param_details["dtype_A_B"]
+        self.bpe_mat1 = name2bpe(dtype_A_B[0])
+        self.bpe_mat2 = name2bpe(dtype_A_B[1])
+        self.bpe_output = name2bpe(dtype_A_B[2])
+        self.bpe_bias = 0
+
+        return super().bytes(
+            bpe_mat1=self.bpe_mat1,
+            bpe_mat2=self.bpe_mat2,
+            bpe_bias=self.bpe_bias,
+            bpe_output=self.bpe_output,
+        )
+
+    def flops_bwd(self):
+        raise NotImplementedError(
+            "Backward pass for turbo_gemm is not defined."
+        )
+
+    def bytes_bwd(self, bytes_per_element):
+        raise NotImplementedError(
+            "Backward pass for turbo_gemm is not defined."
+        )
+
 
 # 2. Convolution
 class CONV:

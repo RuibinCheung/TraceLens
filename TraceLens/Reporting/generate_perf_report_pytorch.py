@@ -356,7 +356,6 @@ def generate_perf_report_pytorch(
                 perf_metrics_dfs[f"{op_cat}_fwd"] = df_ops_fwd
             if not df_ops_bwd.empty:
                 perf_metrics_dfs[f"{op_cat}_bwd"] = df_ops_bwd
-
     # Short kernel study
     df_hist, df_short_kernels = get_dfs_short_kernels(
         perf_analyzer,
