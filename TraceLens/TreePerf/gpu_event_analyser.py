@@ -108,7 +108,7 @@ class GPUEventAnalyser:
                 if category == "gpu_memcpy":
                     memcpy_events.append(event)
                 elif category in {"kernel", "gpu_memset"}:
-                    if "nccl" in event.get("name"):
+                    if "nccl" in event.get("name") or "deep_ep" in event.get("name"):
                         comm_events.append(event)
                     else:
                         comp_events.append(event)
