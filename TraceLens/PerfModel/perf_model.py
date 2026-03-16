@@ -30,6 +30,7 @@ def name2bpe(name):
             "c10::float8_e4m3fnuz",
             "c10::float8_e4m3fn",
             "c10::float8_e5m2",
+            "c10::float4_e2m1fn_x2",
             "unsigned char",
             "signed char",
             "fp8",
@@ -55,6 +56,7 @@ def gemmologist_dtype_map(dtype):
         "fp16": "c10::half",
         "bf16": "c10::bfloat16",
         "fp8": "c10::float8_e4m3fnuz",
+        "fp4": "c10::float4_e2m1fn_x2",
     }
     return dict_dtype2gemmologist.get(dtype.lower(), None)
 
@@ -75,6 +77,7 @@ def torch_dtype_map(dtype):
         "c10::float8_e4m3fnuz": "fp8",
         "unsigned char": "fp8",
         "fp8": "fp8",
+        "c10::float4_e2m1fn_x2": "fp4",
     }
     return dict_dtype2gemmologist.get(dtype.lower(), None)
 
@@ -832,6 +835,70 @@ class tev2_pseudo_gemm(GEMM):
     def bytes_bwd(self, bytes_per_element):
         raise NotImplementedError("Backward pass for tev2_pseudo_gemm is not defined.")
 
+class aiter_fp4gemm(GEMM):
+    """
+    """
+    def __init__(self, event, arch=None, python_path=None):
+        super().__init__(event, arch)
+    
+    def get_param_details(self, event):
+        input_dims = event["args"]["Input Dims"]
+
+        A_shape, B_shape = input_dims[0], input_dims[1]
+
+        M, K = A_shape
+        N, _ = B_shape
+        K = K * 2
+        bias = False
+
+        # dtype A, B, output, bias
+        dtype_A_B = (
+            event["args"]["Input type"][0],
+            event["args"]["Input type"][1],
+            event["args"]["Input type"][4],
+        )
+        try:
+            stride_A = tuple(event["args"]["Input Strides"][0])
+            stride_B = tuple(event["args"]["Input Strides"][1])
+
+        except KeyError:
+            stride_A = stride_B = None
+
+        return {
+            "M": M,
+            "N": N,
+            "K": K,
+            "bias": bias,
+            "stride_A": stride_A,
+            "stride_B": stride_B,
+            "dtype_A_B": dtype_A_B,
+        }
+
+    def bytes(self):
+        dtype_A_B = self.param_details["dtype_A_B"]
+        self.bpe_mat1 = name2bpe(dtype_A_B[0])
+        self.bpe_mat2 = name2bpe(dtype_A_B[1])
+        self.bpe_output = name2bpe(dtype_A_B[2])
+        self.bpe_bias = 0
+
+        return super().bytes(
+            bpe_mat1=self.bpe_mat1,
+            bpe_mat2=self.bpe_mat2,
+            bpe_bias=self.bpe_bias,
+            bpe_output=self.bpe_output,
+        )
+
+    def flops_bwd(self):
+        raise NotImplementedError(
+            "Backward pass for aiter_fp4gemm is not defined."
+        )
+
+    def bytes_bwd(self, bytes_per_element):
+        raise NotImplementedError(
+            "Backward pass for aiter_fp4gemm is not defined."
+        )
+
+
 class turbo_gemm(GEMM):
     """
     """
@@ -841,6 +908,7 @@ class turbo_gemm(GEMM):
     
     def scalar_dtype_enum_to_scalar_dtype(self, scalar_dtype_enum):
         dict_scalar_dtype_enum2scalar_dtype = {
+            # Ref: https://github.com/pytorch/pytorch/blob/99bc3cc34d7cdcbc085d8caac63963588c6dbb9c/torch/headeronly/core/ScalarType.h#L103-L149
             15: "c10::bfloat16",
         }
         scalar_dtype = dict_scalar_dtype_enum2scalar_dtype.get(scalar_dtype_enum, None)

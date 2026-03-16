@@ -39,6 +39,7 @@ op_to_perf_model_class_map = {
     "flash_attn_3::fwd": perf_model.flash_attn_v3_forward,
     # Primus-Turbo ops
     "primus_turbo_cpp_extension::hipblaslt_gemm_fp8": perf_model.turbo_gemm,
+    "aiter::gemm_a4w4_asm": perf_model.aiter_fp4gemm,
 }
 
 unary_elemwise_ops = [
